@@ -19,9 +19,9 @@ dagger call bazel --help
 
 | Module | Description | Link |
 | --- | --- | --- |
-| **Bazel** | Build, Test, and Queries for monorepos (Hybrid Workspace/Bzlmod support). | [View Docs](https://www.google.com/search?q=./src/toolbox/actions/bazel/README.md) |
-| **Python** | Linting, formatting, and testing for Python projects. | [View Docs](https://www.google.com/search?q=./src/toolbox/actions/python_dev/README.md) |
-| **System** | Shell utilities and container inspection tools. | [View Docs](https://www.google.com/search?q=./src/toolbox/actions/system/README.md) |
+| **Bazel** | Build, Test, and Queries for monorepos (Hybrid Workspace/Bzlmod support). | [View Docs](./src/toolbox/actions/bazel/README.md) |
+| **Python** | Linting, formatting, and testing for Python projects. | [View Docs](./src/toolbox/actions/python_dev/README.md) |
+| **System** | Shell utilities and container inspection tools. | [View Docs](./src/toolbox/actions/system/README.md) |
 
 ## 🛠️ Development
 
