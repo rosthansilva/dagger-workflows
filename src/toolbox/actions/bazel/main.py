@@ -57,7 +57,7 @@ class Bazel:
         """Executa 'bazel build' com suporte a autenticação."""
         flags = ["build"] + targets
         if not bzlmod and self._is_version_ge_7(bazel_version):
-            flags.append("--no_enable_bzlmod")
+            flags.append("--noenable_bzlmod")
 
         return await self._run_bazel(source, flags, bazel_version, ssh_key, netrc)
 
@@ -76,7 +76,7 @@ class Bazel:
         """Executa 'bazel test' com suporte a autenticação."""
         flags = ["test", f"--test_output={test_output}"] + targets
         if not bzlmod and self._is_version_ge_7(bazel_version):
-            flags.append("--no_enable_bzlmod")
+            flags.append("--noenable_bzlmod")
 
         return await self._run_bazel(source, flags, bazel_version, ssh_key, netrc)
 
@@ -95,7 +95,7 @@ class Bazel:
         """Executa query com suporte a autenticação."""
         extra_flags = ""
         if not bzlmod and self._is_version_ge_7(bazel_version):
-            extra_flags = "--no_enable_bzlmod"
+            extra_flags = "--noenable_bzlmod"
 
         cmd = f"bazel query '{query}' {extra_flags} > /tmp/{output_name}"
 
