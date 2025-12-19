@@ -85,3 +85,7 @@ The project follows a **Router-Action** pattern. The `main.py` acts as a central
 │           │   └── README.md   # Action Documentation
 
 ```
+
+
+dagger call bazel test     --source examples/bazel-tests-examples     --targets "//..."
+dagger call bazel query-to-file     --source examples/bazel-tests-examples     --bzlmod=false     --bazel-version="7.1.1"     --query "deps(//...)"     -o ./dumps/graph_legacy.txt
