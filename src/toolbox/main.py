@@ -5,7 +5,7 @@ from dagger import object_type, function
 # Usamos o ponto (.) para indicar "deste pacote atual, vá para actions..."
 # Isso remove a dependência do nome "src"
 #FROMLINES
-from .actions.terraform.main import Terraform
+from .actions.zuul.main import Zuul
 from .actions.terraform.main import Terraform
 from .actions.system.main import System
 from .actions.python_dev.main import PythonDev
@@ -45,4 +45,11 @@ class Toolbox:
         """Acessa as ferramentas de terraform."""
         return Terraform()
     
+    
+    
+    @function
+    def zuul(self) -> Zuul:
+        """Acessa as ferramentas de zuul."""
+        return Zuul()
+        
     
