@@ -38,6 +38,8 @@ class Bazel:
             .with_exec(["sh", "-c", install_script])
             .with_exec(["useradd", "-m", "-s", "/bin/bash", "developer"])
             .with_env_variable("BAZELISK_HOME", "/home/developer/.cache/bazelisk")
+            .with_exec(["sh", "-c", "echo '    StrictHostKeyChecking no' >> /etc/ssh/ssh_config"])
+            .with_exec(["sh", "-c", install_script])
             .with_env_variable("HOME", "/home/developer")
             .with_user("developer")
             .with_workdir("/home/developer")
@@ -51,7 +53,8 @@ class Bazel:
         bzlmod: Annotated[bool, Doc("Bzlmod flag")] = True,
         bazel_version: Annotated[Optional[str], Doc("Versão específica")] = None,
         # NOVOS ARGUMENTOS DE AUTH
-        ssh_key: Annotated[Optional[Secret], Doc("Chave privada SSH para clonar repos privados")] = None,
+        ssh_dir: Annotated[Optional[Directory], Doc("Full .ssh directory to mount")] = None,
+        ssh_key: Annotated[Optional[Secret], Doc("Chave privada SSH")] = None,
         netrc: Annotated[Optional[Secret], Doc("Arquivo .netrc para autenticação HTTP")] = None
     ) -> str:
         """Executa 'bazel build' com suporte a autenticação."""
@@ -70,6 +73,7 @@ class Bazel:
         bazel_version: Annotated[Optional[str], Doc("Versão específica")] = None,
         test_output: Annotated[str, Doc("Nível de log")] = "errors",
         # NOVOS ARGUMENTOS DE AUTH
+        ssh_dir: Annotated[Optional[Directory], Doc("Full .ssh directory to mount")] = None,
         ssh_key: Annotated[Optional[Secret], Doc("Chave privada SSH")] = None,
         netrc: Annotated[Optional[Secret], Doc("Arquivo .netrc")] = None
     ) -> str:
@@ -88,7 +92,7 @@ class Bazel:
         query: str = "//...",
         bzlmod: bool = True,
         bazel_version: Optional[str] = None,
-        # NOVOS ARGUMENTOS DE AUTH
+        ssh_dir: Annotated[Optional[Directory], Doc("Full .ssh directory to mount")] = None,
         ssh_key: Annotated[Optional[Secret], Doc("Chave privada SSH")] = None,
         netrc: Annotated[Optional[Secret], Doc("Arquivo .netrc")] = None
     ) -> File:
@@ -100,7 +104,7 @@ class Bazel:
         cmd = f"bazel query '{query}' {extra_flags} > /tmp/{output_name}"
 
         return (
-            self._setup_env(source, bazel_version, ssh_key, netrc)
+            self._setup_env(source, bazel_version, ssh_key, ssh_dir, netrc)
             .with_exec(["sh", "-c", cmd])
             .file(f"/tmp/{output_name}")
         )
@@ -112,9 +116,9 @@ class Bazel:
         try: return int(version.split('.')[0]) >= 7
         except: return True
 
-    async def _run_bazel(self, source: Directory, args: list[str], version: Optional[str], ssh_key: Optional[Secret], netrc: Optional[Secret]) -> str:
+    async def _run_bazel(self, source: Directory, args: list[str], version: Optional[str], ssh_key: Optional[Secret], ssh_dir: Optional[Secret], netrc: Optional[Secret]) -> str:
         return await (
-            self._setup_env(source, version, ssh_key, netrc)
+            self._setup_env(source, version, ssh_dir, netrc)
             .with_exec(["bazel"] + args)
             .stdout()
         )
@@ -124,6 +128,7 @@ class Bazel:
         source: Directory, 
         bazel_version: Optional[str],
         ssh_key: Optional[Secret],
+        ssh_dir: Optional[Directory],
         netrc: Optional[Secret]
     ) -> Container:
         ctr = (
@@ -133,8 +138,13 @@ class Bazel:
             .with_mounted_cache("/home/developer/.cache/bazel", dag.cache_volume("bazel-repo-cache"), owner="developer")
             .with_mounted_cache("/home/developer/.cache/bazelisk", dag.cache_volume("bazelisk-cache"), owner="developer")
         )
-        
-        # 1. Configuração SSH
+        # Configure SSH DIR
+        if ssh_dir:
+            ctr = ctr.with_mounted_directory(f"{home_dir}/.ssh", ssh_dir, owner="developer")
+
+        if netrc:
+            ctr = ctr.with_mounted_secret(f"{home_dir}/.netrc", netrc, owner="developer", mode=0o600)
+        # Configuração SSH
         if ssh_key:
             # Montamos a chave no local padrão do usuário
             ctr = ctr.with_mounted_secret("/home/developer/.ssh/id_rsa", ssh_key, owner="developer", mode=0o600)
