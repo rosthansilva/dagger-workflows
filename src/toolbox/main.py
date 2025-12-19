@@ -4,9 +4,13 @@ from dagger import object_type, function
 # ALTERAÇÃO AQUI:
 # Usamos o ponto (.) para indicar "deste pacote atual, vá para actions..."
 # Isso remove a dependência do nome "src"
+#FROMLINES
+from .actions.terraform.main import Terraform
+from .actions.terraform.main import Terraform
 from .actions.system.main import System
 from .actions.python_dev.main import PythonDev
 from .actions.bazel.main import Bazel
+from .actions.dev.main import Dev
 
 @object_type
 class Toolbox:
@@ -31,3 +35,14 @@ class Toolbox:
         Suporta cenários de migração Workspace/Bzlmod.
         """
         return Bazel()
+    @function
+    def dev(self) -> Dev:
+        """Ferramentas de desenvolvimento do próprio Toolbox (scaffolding)."""
+        return Dev()
+
+    @function
+    def terraform(self) -> Terraform:
+        """Acessa as ferramentas de terraform."""
+        return Terraform()
+    
+    
