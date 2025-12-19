@@ -1,0 +1,5 @@
+- hosts: all
+  tasks:
+    - name: Generated task for my-awesome-job
+      debug:
+        msg: "Hello from Zuul job my-awesome-job"
