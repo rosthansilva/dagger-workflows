@@ -17,12 +17,12 @@ The toolbox is organized into specialized modules. Each has its own deep-dive do
 
 | Action | Description | Documentation |
 | --- | --- | --- |
-| **🏗️ Terraform** | Secure IaC with Plan/Apply immutability and auto-docs. | [View README](https://www.google.com/search?q=./src/toolbox/actions/terraform/README.md) |
-| **🚦 Zuul CI** | Job scaffolding and playbook validation for Zuul environments. | [View README](https://www.google.com/search?q=./src/toolbox/actions/zuul/README.md) |
-| **🍃 Bazel** | High-performance build tools with Workspace/Bzlmod hybrid support. | [View README](https://www.google.com/search?q=./src/toolbox/actions/bazel/README.md) |
-| **🛠️ Dev** | **The Engine:** Automated scaffolding to create and register new actions. | [View README](https://www.google.com/search?q=./src/toolbox/actions/dev/README.md) |
-| **🐍 Python** | Standardized linting and testing pipelines for Python projects. | [View README](https://www.google.com/search?q=./src/toolbox/actions/python_dev/README.md) |
-| **💻 System** | Essential shell utilities and container environment inspection. | [View README](https://www.google.com/search?q=./src/toolbox/actions/system/README.md) |
+| **🏗️ Terraform** | Secure IaC with Plan/Apply immutability and auto-docs. | [View README](./src/toolbox/actions/terraform/README.md) |
+| **🚦 Zuul CI** | Job scaffolding and playbook validation for Zuul environments. | [View README](./src/toolbox/actions/zuul/README.md) |
+| **🍃 Bazel** | High-performance build tools with Workspace/Bzlmod hybrid support. | [View README](./src/toolbox/actions/bazel/README.md) |
+| **🛠️ Dev** | **The Engine:** Automated scaffolding to create and register new actions. | [View README](./src/toolbox/actions/dev/README.md) |
+| **🐍 Python** | Standardized linting and testing pipelines for Python projects. | [View README](./src/toolbox/actions/python_dev/README.md) |
+| **💻 System** | Essential shell utilities and container environment inspection. | [View README](./src/toolbox/actions/system/README.md) |
 
 ---
 
