@@ -1,0 +1,6 @@
+scala_library(
+    name = "integration",
+    srcs = glob(["*.scala"]),
+    testonly = True,
+    visibility = ["//visibility:public"],
+)

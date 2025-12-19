@@ -1,0 +1,13 @@
+java_test(
+    name = "ExampleTest",
+    size = "small",
+    srcs = ["ExampleTest.java"],
+    resources = ["//example/src/test/resources"],
+    deps = ["//example/src/main/java/com/example"],
+)
+
+java_test(
+    name = "Example2Test",
+    size = "small",
+    srcs = ["Example2Test.java"],
+)

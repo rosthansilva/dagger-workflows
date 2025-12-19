@@ -1,0 +1,3 @@
+unit_test(
+	deps = ["//example/src/main/java/com/example"],
+)

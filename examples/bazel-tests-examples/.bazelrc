@@ -1,0 +1,6 @@
+test --test_output=errors
+test --test_timeout=1,10,180,600
+
+build --java_language_version=17
+run --java_runtime_version=17
+test --java_runtime_version=17

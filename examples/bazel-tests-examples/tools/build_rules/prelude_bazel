@@ -1,0 +1,2 @@
+load("@io_bazel_rules_scala//scala:scala.bzl", "scala_library")
+load("//tools/build_rules:test_rules.bzl", "unit_test", "integration_test")
