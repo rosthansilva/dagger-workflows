@@ -131,6 +131,7 @@ class Bazel:
         ssh_dir: Optional[Directory],
         netrc: Optional[Secret]
     ) -> Container:
+        home_dir = "/home/developer"
         ctr = (
             self.base()
             .with_workdir("/src")
