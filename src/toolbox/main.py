@@ -5,6 +5,7 @@ from dagger import object_type, function
 # Usamos o ponto (.) para indicar "deste pacote atual, vá para actions..."
 # Isso remove a dependência do nome "src"
 #FROMLINES
+from .actions.git_utils.main import GitUtils
 from .actions.zuul.main import Zuul
 from .actions.terraform.main import Terraform
 from .actions.system.main import System
@@ -52,4 +53,11 @@ class Toolbox:
         """Acessa as ferramentas de zuul."""
         return Zuul()
         
+    
+
+    @function
+    def git_utils(self) -> GitUtils:
+        """Acessa as ferramentas de git_utils."""
+        return GitUtils()
+    
     
