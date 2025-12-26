@@ -27,6 +27,7 @@ class Bazel:
         curl -L "https://github.com/bazelbuild/bazelisk/releases/download/{bazelisk_version}/bazelisk-linux-$BAZEL_ARCH" \
              -o /usr/local/bin/bazel
         chmod +x /usr/local/bin/bazel
+        apt-get update && apt-get install -y curl git build-essential python3 python3-pip openssh-client jq
         """
 
         return (
@@ -34,7 +35,6 @@ class Bazel:
             .from_("ubuntu:22.04")
             .with_exec(["apt-get", "update"])
             # Adicionei 'openssh-client' explicitamente para o Git funcionar via SSH
-            .withExec(["sh", "-c", "apt-get update && apt-get install -y curl git build-essential python3 python3-pip openssh-client jq"])
             .with_exec(["sh", "-c", install_script])
             .with_exec(["useradd", "-m", "-s", "/bin/bash", "developer"])
             .with_env_variable("BAZELISK_HOME", "/home/developer/.cache/bazelisk")
@@ -83,135 +83,109 @@ class Bazel:
             flags.append("--noenable_bzlmod")
 
         return await self._run_bazel(source, flags, bazel_version, ssh_key, netrc)
+
     @function
-    def build_with_report(
+    async def build_with_report(
         self,
-        source: Annotated[Directory, Doc("Root repo")],
+        source: Annotated[Directory, Doc("Repo raiz")],
         targets: Annotated[list[str], Doc("Targets")] = ["//..."],
+        # NOVO: Separamos configs (como --config=gcc9) dos targets para não quebrar o 'bazel query'
+        build_args: Annotated[list[str], Doc("Flags extras de build (ex: --config=gcc9)")] = [],
         bzlmod: Annotated[bool, Doc("Bzlmod flag")] = True,
-        bazel_version: Annotated[Optional[str], Doc("Specific version")] = None,
+        bazel_version: Annotated[Optional[str], Doc("Versão específica")] = None,
         ssh_dir: Annotated[Optional[Directory], Doc("Full .ssh directory to mount")] = None,
-        ssh_key: Annotated[Optional[Secret], Doc("SSH Private Key")] = None,
-        netrc: Annotated[Optional[Secret], Doc(".netrc file")] = None
+        ssh_key: Annotated[Optional[Secret], Doc("Chave privada SSH")] = None,
+        netrc: Annotated[Optional[Secret], Doc("Arquivo .netrc")] = None
     ) -> File:
         """
-        Executes build and returns a Markdown file (build_report.md)
-        listing successful, failed, and skipped targets.
+        Executa build e retorna relatório Markdown. 
+        Processa o JSON internamente no Dagger SDK (host), sem scripts injetados no container.
         """
         
-        # 1. Prepare flags for the python script
-        target_str = " ".join(targets)
-        extra_flag = ""
+        # 1. Preparar Strings
+        target_str = " ".join(targets)      # ex: "//..."
+        build_args_str = " ".join(build_args) # ex: "--config=gcc9"
+        
+        extra_flags = ""
         if not bzlmod and self._is_version_ge_7(bazel_version):
-            extra_flag = "--noenable_bzlmod"
+            extra_flags = "--noenable_bzlmod"
 
-        # 2. The Python Script to inject into the container
-        # This script runs 'bazel query' first, then 'bazel build', 
-        # parses the JSON event stream, and writes the Markdown file.
-        python_script = f"""
-import subprocess
-import json
-import sys
-import datetime
-
-JSON_LOG = "build_events.json"
-REPORT_FILE = "build_report.md"
-TARGETS = "{target_str}"
-EXTRA_FLAGS = "{extra_flag}"
-
-def generate_report():
-    print(f"--- Starting Build Report Generation ---")
-    
-    # Step 1: Get the list of ALL intended targets via query
-    print("1. Querying targets...")
-    try:
-        # We split flags manually just in case EXTRA_FLAGS is empty
-        query_cmd = ["bazel", "query", TARGETS, "--output", "label"]
-        if EXTRA_FLAGS:
-            query_cmd.insert(2, EXTRA_FLAGS)
-            
-        raw_query = subprocess.check_output(query_cmd).decode("utf-8")
+        # 2. Configurar Container
+        ctr = self._setup_env(source, bazel_version, ssh_key, ssh_dir, netrc)
+        
+        # 3. Executar Query (SOMENTE TARGETS)
+        # Importante: Não passamos 'build_args' aqui, pois 'bazel query' não suporta --config
+        print("1. Querying targets...")
+        query_cmd = f"bazel query '{target_str}' {extra_flags} --output label > /tmp/query_output.txt"
+        ctr = ctr.with_exec(["sh", "-c", query_cmd])
+        
+        # Trazemos o resultado para a memória do Python (Host)
+        raw_query = await ctr.file("/tmp/query_output.txt").contents()
         all_targets = [t.strip() for t in raw_query.splitlines() if t.strip()]
-    except subprocess.CalledProcessError as e:
-        print(f"Error querying targets: {{e}}")
-        sys.exit(1)
 
-    # Step 2: Run the build and generate BEP JSON
-    # We use check=False because we expect build failures (we want to report them, not crash)
-    print("2. Building targets...")
-    build_cmd = ["bazel", "build"] + TARGETS.split() + [
-        "--build_event_json_file=" + JSON_LOG,
-        "--curses=no",
-        "--color=yes"
-    ]
-    if EXTRA_FLAGS:
-        build_cmd.insert(2, EXTRA_FLAGS)
+        # 4. Executar Build (TARGETS + BUILD_ARGS)
+        # Aqui sim passamos o --config=gcc9
+        print("2. Building targets...")
+        json_log_path = "/tmp/build_events.json"
         
-    subprocess.run(build_cmd, check=False)
-
-    # Step 3: Parse the JSON Log
-    print("3. Parsing results...")
-    successful_targets = set()
-    failed_targets = set()
-    
-    try:
-        with open(JSON_LOG, 'r') as f:
-            for line in f:
-                if not line.strip(): continue
-                try:
-                    event = json.loads(line)
-                    # We look for 'targetCompleted' events
-                    if 'id' in event and 'targetCompleted' in event['id']:
-                        label = event['id']['targetCompleted']['label']
-                        success = event.get('completed', {{}}).get('success', False)
-                        
-                        if success:
-                            successful_targets.add(label)
-                        else:
-                            failed_targets.add(label)
-                except json.JSONDecodeError:
-                    continue
-    except FileNotFoundError:
-        print("Warning: JSON log file not found (build might have crashed early).")
-
-    # Step 4: Generate Markdown
-    print("4. Writing Markdown report...")
-    with open(REPORT_FILE, "w") as f:
-        f.write(f"## Bazel Build Report\\n")
-        f.write(f"**Date:** {{datetime.datetime.now()}}\\n\\n")
-        f.write("| Target | Status | Details |\\n")
-        f.write("| :--- | :--- | :--- |\\n")
+        # '|| true' impede que o Dagger pare se houver erro de compilação (queremos gerar o relatório mesmo assim)
+        build_cmd = (
+            f"bazel build {target_str} {build_args_str} {extra_flags} "
+            f"--build_event_json_file={json_log_path} "
+            "--color=yes --curses=no || true"
+        )
         
+        ctr = ctr.with_exec(["sh", "-c", build_cmd])
+        
+        # Ler o JSON gerado
+        try:
+            json_content = await ctr.file(json_log_path).contents()
+        except Exception:
+            print("Aviso: Arquivo JSON não encontrado (Build falhou antes de iniciar?)")
+            json_content = ""
+
+        # 5. Processamento Lógico (Python Puro no Host)
+        print("3. Processing report...")
+        successful_targets = set()
+        failed_targets = set()
+
+        for line in json_content.splitlines():
+            if not line.strip(): continue
+            try:
+                event = json.loads(line)
+                if 'id' in event and 'targetCompleted' in event['id']:
+                    label = event['id']['targetCompleted']['label']
+                    success = event.get('completed', {}).get('success', False)
+                    if success:
+                        successful_targets.add(label)
+                    else:
+                        failed_targets.add(label)
+            except json.JSONDecodeError:
+                continue
+
+        # 6. Gerar Markdown
+        md_lines = []
+        md_lines.append(f"## Bazel Build Report")
+        md_lines.append(f"**Date:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        md_lines.append("")
+        md_lines.append("| Target | Status | Details |")
+        md_lines.append("| :--- | :--- | :--- |")
+
         for target in all_targets:
             if target in successful_targets:
                 status = "✅ SUCCESS"
-                details = "Build successful"
+                detail = "Build successful"
             elif target in failed_targets:
                 status = "❌ FAILED"
-                details = "Compilation or Test failed"
+                detail = "Compilation or Test failed"
             else:
-                # If it's in query but not in BEP completed events, it was skipped
                 status = "⚪ SKIPPED"
-                details = "Dependency failed or not attempted"
+                detail = "Dependency failed or not attempted"
             
-            f.write(f"| {{target}} | {{status}} | {{details}} |\\n")
-            
-    print(f"--- Report saved to {{REPORT_FILE}} ---")
+            md_lines.append(f"| {target} | {status} | {detail} |")
 
-if __name__ == "__main__":
-    generate_report()
-"""
-
-        # 3. Setup Environment
-        ctr = self._setup_env(source, bazel_version, ssh_key, ssh_dir, netrc)
-        
-        # 4. Inject script, run it, and retrieve the report
-        return (
-            ctr
-            .with_new_file("/src/generate_report.py", contents=python_script)
-            .with_exec(["python3", "/src/generate_report.py"])
-            .file("build_report.md")
-        )
+        # Retornar arquivo
+        return ctr.with_new_file("build_report.md", contents="\n".join(md_lines)).file("build_report.md")
         
     @function
     def query_to_file(
