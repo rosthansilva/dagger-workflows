@@ -34,7 +34,7 @@ class Bazel:
             .from_("ubuntu:22.04")
             .with_exec(["apt-get", "update"])
             # Adicionei 'openssh-client' explicitamente para o Git funcionar via SSH
-            .with_exec(["apt-get", "install", "-y", "curl", "git", "build-essential", "python3", "python3-pip", "openssh-client"])
+            .with_exec(["apt-get", "install", "-y", "curl", "git", "build-essential", "python3", "python3-pip", "openssh-client", "jq"])
             .with_exec(["sh", "-c", install_script])
             .with_exec(["useradd", "-m", "-s", "/bin/bash", "developer"])
             .with_env_variable("BAZELISK_HOME", "/home/developer/.cache/bazelisk")
@@ -83,7 +83,136 @@ class Bazel:
             flags.append("--noenable_bzlmod")
 
         return await self._run_bazel(source, flags, bazel_version, ssh_key, netrc)
+    @function
+    def build_with_report(
+        self,
+        source: Annotated[Directory, Doc("Root repo")],
+        targets: Annotated[list[str], Doc("Targets")] = ["//..."],
+        bzlmod: Annotated[bool, Doc("Bzlmod flag")] = True,
+        bazel_version: Annotated[Optional[str], Doc("Specific version")] = None,
+        ssh_dir: Annotated[Optional[Directory], Doc("Full .ssh directory to mount")] = None,
+        ssh_key: Annotated[Optional[Secret], Doc("SSH Private Key")] = None,
+        netrc: Annotated[Optional[Secret], Doc(".netrc file")] = None
+    ) -> File:
+        """
+        Executes build and returns a Markdown file (build_report.md)
+        listing successful, failed, and skipped targets.
+        """
+        
+        # 1. Prepare flags for the python script
+        target_str = " ".join(targets)
+        extra_flag = ""
+        if not bzlmod and self._is_version_ge_7(bazel_version):
+            extra_flag = "--noenable_bzlmod"
 
+        # 2. The Python Script to inject into the container
+        # This script runs 'bazel query' first, then 'bazel build', 
+        # parses the JSON event stream, and writes the Markdown file.
+        python_script = f"""
+import subprocess
+import json
+import sys
+import datetime
+
+JSON_LOG = "build_events.json"
+REPORT_FILE = "build_report.md"
+TARGETS = "{target_str}"
+EXTRA_FLAGS = "{extra_flag}"
+
+def generate_report():
+    print(f"--- Starting Build Report Generation ---")
+    
+    # Step 1: Get the list of ALL intended targets via query
+    print("1. Querying targets...")
+    try:
+        # We split flags manually just in case EXTRA_FLAGS is empty
+        query_cmd = ["bazel", "query", TARGETS, "--output", "label"]
+        if EXTRA_FLAGS:
+            query_cmd.insert(2, EXTRA_FLAGS)
+            
+        raw_query = subprocess.check_output(query_cmd).decode("utf-8")
+        all_targets = [t.strip() for t in raw_query.splitlines() if t.strip()]
+    except subprocess.CalledProcessError as e:
+        print(f"Error querying targets: {{e}}")
+        sys.exit(1)
+
+    # Step 2: Run the build and generate BEP JSON
+    # We use check=False because we expect build failures (we want to report them, not crash)
+    print("2. Building targets...")
+    build_cmd = ["bazel", "build"] + TARGETS.split() + [
+        "--build_event_json_file=" + JSON_LOG,
+        "--curses=no",
+        "--color=yes"
+    ]
+    if EXTRA_FLAGS:
+        build_cmd.insert(2, EXTRA_FLAGS)
+        
+    subprocess.run(build_cmd, check=False)
+
+    # Step 3: Parse the JSON Log
+    print("3. Parsing results...")
+    successful_targets = set()
+    failed_targets = set()
+    
+    try:
+        with open(JSON_LOG, 'r') as f:
+            for line in f:
+                if not line.strip(): continue
+                try:
+                    event = json.loads(line)
+                    # We look for 'targetCompleted' events
+                    if 'id' in event and 'targetCompleted' in event['id']:
+                        label = event['id']['targetCompleted']['label']
+                        success = event.get('completed', {{}}).get('success', False)
+                        
+                        if success:
+                            successful_targets.add(label)
+                        else:
+                            failed_targets.add(label)
+                except json.JSONDecodeError:
+                    continue
+    except FileNotFoundError:
+        print("Warning: JSON log file not found (build might have crashed early).")
+
+    # Step 4: Generate Markdown
+    print("4. Writing Markdown report...")
+    with open(REPORT_FILE, "w") as f:
+        f.write(f"## Bazel Build Report\\n")
+        f.write(f"**Date:** {{datetime.datetime.now()}}\\n\\n")
+        f.write("| Target | Status | Details |\\n")
+        f.write("| :--- | :--- | :--- |\\n")
+        
+        for target in all_targets:
+            if target in successful_targets:
+                status = "✅ SUCCESS"
+                details = "Build successful"
+            elif target in failed_targets:
+                status = "❌ FAILED"
+                details = "Compilation or Test failed"
+            else:
+                # If it's in query but not in BEP completed events, it was skipped
+                status = "⚪ SKIPPED"
+                details = "Dependency failed or not attempted"
+            
+            f.write(f"| {{target}} | {{status}} | {{details}} |\\n")
+            
+    print(f"--- Report saved to {{REPORT_FILE}} ---")
+
+if __name__ == "__main__":
+    generate_report()
+"""
+
+        # 3. Setup Environment
+        ctr = self._setup_env(source, bazel_version, ssh_key, ssh_dir, netrc)
+        
+        # 4. Inject script, run it, and retrieve the report
+        return (
+            ctr
+            .with_new_file("/src/generate_report.py", contents=python_script)
+            .with_exec(["python3", "/src/generate_report.py"])
+            .file("build_report.md")
+        )
+        
     @function
     def query_to_file(
         self,
