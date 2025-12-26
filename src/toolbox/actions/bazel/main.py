@@ -34,7 +34,7 @@ class Bazel:
             .from_("ubuntu:22.04")
             .with_exec(["apt-get", "update"])
             # Adicionei 'openssh-client' explicitamente para o Git funcionar via SSH
-            withExec(["sh", "-c", "apt-get update && apt-get install -y curl git build-essential python3 python3-pip openssh-client jq"])
+            .withExec(["sh", "-c", "apt-get update && apt-get install -y curl git build-essential python3 python3-pip openssh-client jq"])
             .with_exec(["sh", "-c", install_script])
             .with_exec(["useradd", "-m", "-s", "/bin/bash", "developer"])
             .with_env_variable("BAZELISK_HOME", "/home/developer/.cache/bazelisk")
