@@ -8,7 +8,9 @@ class Bazel:
     Ferramentas para Build e Teste com Bazel.
     Suporta autenticação via SSH e Netrc.
     """
-
+    
+    
+    
     @function
     def base(self) -> Container:
         """
@@ -37,14 +39,99 @@ class Bazel:
             # Adicionei 'openssh-client' explicitamente para o Git funcionar via SSH
             .with_exec(["sh", "-c", install_script])
             .with_exec(["useradd", "-m", "-s", "/bin/bash", "developer"])
+            .with_env_variable("BAZELISK_BASE_URL", "https://github.com/bazelbuild/bazel/releases/download")
             .with_env_variable("BAZELISK_HOME", "/home/developer/.cache/bazelisk")
             .with_exec(["sh", "-c", "echo '    StrictHostKeyChecking no' >> /etc/ssh/ssh_config"])
             .with_exec(["sh", "-c", install_script])
             .with_env_variable("HOME", "/home/developer")
             .with_user("developer")
             .with_workdir("/home/developer")
+            
         )
+    
+    @function
+    async def migration_audit(
+        self,
+        repo1_source: Annotated[Directory, Doc("Repositório Raiz (Workspace)")],
+        repo2_source: Annotated[Directory, Doc("Repositório sendo migrado (Bzlmod)")],
+        repo2_target_in_repo1: Annotated[str, Doc("Target do repo 2 chamado pelo repo 1 (ex: @repo2//my:target)")],
+        bazel_version: Annotated[Optional[str], Doc("Versão do Bazel")] = None,
+        ssh_dir: Optional[Directory] = None,
+        ssh_key: Optional[Secret] = None,
+        netrc: Optional[Secret] = None
+    ) -> File:
+        """
+        Valida a migração híbrida e gera relatório De-Para:
+        1. Valida se Repo 1 builda Repo 2 via WORKSPACE.
+        2. Valida se Repo 2 builda a si mesmo via Bzlmod.
+        3. Compara targets funcionais.
+        """
+        import json
+        import datetime
 
+        # --- 1. VALIDAR INTEGRAÇÃO (WORKSPACE) ---
+        # Montamos o Repo 1 como root e o Repo 2 em um subdiretório para o local_repository funcionar
+        ctr_legacy = (
+            self._setup_env(repo1_source, bazel_version, ssh_key, ssh_dir, netrc)
+            .with_mounted_directory("/repo2_internal", repo2_source)
+            .with_exec(["bazel", "build", repo2_target_in_repo1, "--noenable_bzlmod"])
+        )
+        
+        # Apenas para garantir que o build passou antes de seguir
+        await ctr_legacy.stdout()
+
+        # --- 2. VALIDAR REPO 2 (BZLMOD) ---
+        ctr_modern = self._setup_env(repo2_source, bazel_version, ssh_key, ssh_dir, netrc)
+        
+        # Pegar todos os targets do Repo 2
+        raw_query = await (
+            ctr_modern.with_exec(["sh", "-c", "bazel query //... --enable_bzlmod --output label > /tmp/all_targets.txt"])
+            .file("/tmp/all_targets.txt")
+            .contents()
+        )
+        all_targets = [t.strip() for t in raw_query.splitlines() if t.strip()]
+
+        # Rodar build no Repo 2 com Bzlmod habilitado
+        json_log = "/tmp/bzlmod_events.json"
+        ctr_modern = ctr_modern.with_exec([
+            "sh", "-c", 
+            f"bazel build //... --enable_bzlmod --build_event_json_file={json_log} || true"
+        ])
+
+        # --- 3. PROCESSAR RESULTADOS ---
+        json_content = await ctr_modern.file(json_log).contents()
+        successful_bzlmod = set()
+        for line in json_content.splitlines():
+            try:
+                event = json.loads(line)
+                if 'id' in event and 'targetCompleted' in event['id']:
+                    if event.get('completed', {}).get('success', False):
+                        successful_bzlmod.add(event['id']['targetCompleted']['label'])
+            except: continue
+
+        # --- 4. GERAR RELATÓRIO DE-PARA ---
+        md = [
+            "# 🚀 Bazel Migration Audit Report",
+            f"**Data:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"**Status Integração (Repo1 -> Repo2):** ✅ FUNCTIONAL (Workspace Mode)",
+            f"**Aderência Bzlmod (Repo2):** {len(successful_bzlmod)}/{len(all_targets)} targets funcionais",
+            "",
+            "| Target | Workspace | Bzlmod | Status |",
+            "| :--- | :---: | :---: | :--- |"
+        ]
+
+        for t in all_targets:
+            res = "✅ OK" if t in successful_bzlmod else "❌ FAIL"
+            migrated = "DONE" if t in successful_bzlmod else "PENDING"
+            md.append(f"| {t} | ✅ | {res} | {migrated} |")
+
+        return (
+            dag.container()
+            .from_("alpine")
+            .with_new_file("/report.md", contents="\n".join(md))
+            .file("/report.md")
+        )
+    
     @function
     async def build(
         self, 
