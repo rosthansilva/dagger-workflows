@@ -8,9 +8,7 @@ class Bazel:
     Ferramentas para Build e Teste com Bazel.
     Suporta autenticação via SSH e Netrc.
     """
-    
-    
-    
+
     @function
     def base(self) -> Container:
         """
@@ -46,9 +44,31 @@ class Bazel:
             .with_env_variable("HOME", "/home/developer")
             .with_user("developer")
             .with_workdir("/home/developer")
-            
         )
-    
+
+    @function
+    async def git_check(
+        self,
+        remote_url: Annotated[str, Doc("URL do repositório para testar (SSH)")],
+        ssh_dir: Annotated[Optional[Directory], Doc("Diretório .ssh completo")] = None,
+        ssh_key: Annotated[Optional[Secret], Doc("Chave privada SSH (alternativa)")] = None,
+        netrc: Annotated[Optional[Secret], Doc("Arquivo .netrc")] = None
+    ) -> str:
+        """
+        Verifica a conectividade com o repositório remoto (Smoke Test).
+        """
+        # Usamos um diretório vazio para ser rápido, pois só queremos testar a autenticação
+        ctr = (
+            self._setup_env(dag.directory(), None, ssh_key, ssh_dir, netrc)
+            .with_exec(["git", "ls-remote", remote_url, "HEAD"])
+        )
+        
+        try:
+            output = await ctr.stdout()
+            return f"✅ Conexão estabelecida com sucesso: {output.strip()}"
+        except Exception as e:
+            raise Exception(f"❌ Falha na conexão Git. Verifique SSH/Netrc: {str(e)}")
+
     @function
     async def migration_audit(
         self,
@@ -61,29 +81,23 @@ class Bazel:
         netrc: Optional[Secret] = None
     ) -> File:
         """
-        Valida a migração híbrida e gera relatório De-Para:
-        1. Valida se Repo 1 builda Repo 2 via WORKSPACE.
-        2. Valida se Repo 2 builda a si mesmo via Bzlmod.
-        3. Compara targets funcionais.
+        Valida a migração híbrida e gera relatório De-Para.
         """
         import json
         import datetime
 
         # --- 1. VALIDAR INTEGRAÇÃO (WORKSPACE) ---
-        # Montamos o Repo 1 como root e o Repo 2 em um subdiretório para o local_repository funcionar
         ctr_legacy = (
             self._setup_env(repo1_source, bazel_version, ssh_key, ssh_dir, netrc)
             .with_mounted_directory("/repo2_internal", repo2_source)
             .with_exec(["bazel", "build", repo2_target_in_repo1, "--noenable_bzlmod"])
         )
         
-        # Apenas para garantir que o build passou antes de seguir
         await ctr_legacy.stdout()
 
         # --- 2. VALIDAR REPO 2 (BZLMOD) ---
         ctr_modern = self._setup_env(repo2_source, bazel_version, ssh_key, ssh_dir, netrc)
         
-        # Pegar todos os targets do Repo 2
         raw_query = await (
             ctr_modern.with_exec(["sh", "-c", "bazel query //... --enable_bzlmod --output label > /tmp/all_targets.txt"])
             .file("/tmp/all_targets.txt")
@@ -91,7 +105,6 @@ class Bazel:
         )
         all_targets = [t.strip() for t in raw_query.splitlines() if t.strip()]
 
-        # Rodar build no Repo 2 com Bzlmod habilitado
         json_log = "/tmp/bzlmod_events.json"
         ctr_modern = ctr_modern.with_exec([
             "sh", "-c", 
@@ -109,7 +122,7 @@ class Bazel:
                         successful_bzlmod.add(event['id']['targetCompleted']['label'])
             except: continue
 
-        # --- 4. GERAR RELATÓRIO DE-PARA ---
+        # --- 4. GERAR RELATÓRIO ---
         md = [
             "# 🚀 Bazel Migration Audit Report",
             f"**Data:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
@@ -139,7 +152,6 @@ class Bazel:
         targets: Annotated[list[str], Doc("Targets")] = ["//..."], 
         bzlmod: Annotated[bool, Doc("Bzlmod flag")] = True,
         bazel_version: Annotated[Optional[str], Doc("Versão específica")] = None,
-        # NOVOS ARGUMENTOS DE AUTH
         ssh_dir: Annotated[Optional[Directory], Doc("Full .ssh directory to mount")] = None,
         ssh_key: Annotated[Optional[Secret], Doc("Chave privada SSH")] = None,
         netrc: Annotated[Optional[Secret], Doc("Arquivo .netrc para autenticação HTTP")] = None
@@ -149,7 +161,7 @@ class Bazel:
         if not bzlmod and self._is_version_ge_7(bazel_version):
             flags.append("--noenable_bzlmod")
 
-        return await self._run_bazel(source, flags, bazel_version, ssh_key, netrc)
+        return await self._run_bazel(source, flags, bazel_version, ssh_key, ssh_dir, netrc)
 
     @function
     async def test(
@@ -159,7 +171,6 @@ class Bazel:
         bzlmod: Annotated[bool, Doc("Bzlmod flag")] = True,
         bazel_version: Annotated[Optional[str], Doc("Versão específica")] = None,
         test_output: Annotated[str, Doc("Nível de log")] = "errors",
-        # NOVOS ARGUMENTOS DE AUTH
         ssh_dir: Annotated[Optional[Directory], Doc("Full .ssh directory to mount")] = None,
         ssh_key: Annotated[Optional[Secret], Doc("Chave privada SSH")] = None,
         netrc: Annotated[Optional[Secret], Doc("Arquivo .netrc")] = None
@@ -169,14 +180,13 @@ class Bazel:
         if not bzlmod and self._is_version_ge_7(bazel_version):
             flags.append("--noenable_bzlmod")
 
-        return await self._run_bazel(source, flags, bazel_version, ssh_key, netrc)
+        return await self._run_bazel(source, flags, bazel_version, ssh_key, ssh_dir, netrc)
 
     @function
     async def build_with_report(
         self,
         source: Annotated[Directory, Doc("Repo raiz")],
         targets: Annotated[list[str], Doc("Targets")] = ["//..."],
-        # NOVO: Separamos configs (como --config=gcc9) dos targets para não quebrar o 'bazel query'
         build_args: Annotated[list[str], Doc("Flags extras de build (ex: --config=gcc9)")] = [],
         bzlmod: Annotated[bool, Doc("Bzlmod flag")] = True,
         bazel_version: Annotated[Optional[str], Doc("Versão específica")] = None,
@@ -185,37 +195,30 @@ class Bazel:
         netrc: Annotated[Optional[Secret], Doc("Arquivo .netrc")] = None
     ) -> File:
         """
-        Executa build e retorna relatório Markdown. 
-        Processa o JSON internamente no Dagger SDK (host), sem scripts injetados no container.
+        Executa build e retorna relatório Markdown.
         """
+        import json
+        import datetime
         
-        # 1. Preparar Strings
-        target_str = " ".join(targets)      # ex: "//..."
-        build_args_str = " ".join(build_args) # ex: "--config=gcc9"
+        target_str = " ".join(targets)
+        build_args_str = " ".join(build_args)
         
         extra_flags = ""
         if not bzlmod and self._is_version_ge_7(bazel_version):
             extra_flags = "--noenable_bzlmod"
 
-        # 2. Configurar Container
         ctr = self._setup_env(source, bazel_version, ssh_key, ssh_dir, netrc)
         
-        # 3. Executar Query (SOMENTE TARGETS)
-        # Importante: Não passamos 'build_args' aqui, pois 'bazel query' não suporta --config
         print("1. Querying targets...")
         query_cmd = f"bazel query '{target_str}' {extra_flags} --output label > /tmp/query_output.txt"
         ctr = ctr.with_exec(["sh", "-c", query_cmd])
         
-        # Trazemos o resultado para a memória do Python (Host)
         raw_query = await ctr.file("/tmp/query_output.txt").contents()
         all_targets = [t.strip() for t in raw_query.splitlines() if t.strip()]
 
-        # 4. Executar Build (TARGETS + BUILD_ARGS)
-        # Aqui sim passamos o --config=gcc9
         print("2. Building targets...")
         json_log_path = "/tmp/build_events.json"
         
-        # '|| true' impede que o Dagger pare se houver erro de compilação (queremos gerar o relatório mesmo assim)
         build_cmd = (
             f"bazel build {target_str} {build_args_str} {extra_flags} "
             f"--build_event_json_file={json_log_path} "
@@ -224,14 +227,12 @@ class Bazel:
         
         ctr = ctr.with_exec(["sh", "-c", build_cmd])
         
-        # Ler o JSON gerado
         try:
             json_content = await ctr.file(json_log_path).contents()
         except Exception:
-            print("Aviso: Arquivo JSON não encontrado (Build falhou antes de iniciar?)")
+            print("Aviso: Arquivo JSON não encontrado")
             json_content = ""
 
-        # 5. Processamento Lógico (Python Puro no Host)
         print("3. Processing report...")
         successful_targets = set()
         failed_targets = set()
@@ -250,7 +251,6 @@ class Bazel:
             except json.JSONDecodeError:
                 continue
 
-        # 6. Gerar Markdown
         md_lines = []
         md_lines.append(f"## Bazel Build Report")
         md_lines.append(f"**Date:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -271,7 +271,6 @@ class Bazel:
             
             md_lines.append(f"| {target} | {status} | {detail} |")
 
-        # Retornar arquivo
         return ctr.with_new_file("build_report.md", contents="\n".join(md_lines)).file("build_report.md")
         
     @function
@@ -306,9 +305,9 @@ class Bazel:
         try: return int(version.split('.')[0]) >= 7
         except: return True
 
-    async def _run_bazel(self, source: Directory, args: list[str], version: Optional[str], ssh_key: Optional[Secret], ssh_dir: Optional[Secret], netrc: Optional[Secret]) -> str:
+    async def _run_bazel(self, source: Directory, args: list[str], version: Optional[str], ssh_key: Optional[Secret], ssh_dir: Optional[Directory], netrc: Optional[Secret]) -> str:
         return await (
-            self._setup_env(source, version, ssh_dir, netrc)
+            self._setup_env(source, version, ssh_key, ssh_dir, netrc)
             .with_exec(["bazel"] + args)
             .stdout()
         )
@@ -326,28 +325,20 @@ class Bazel:
             self.base()
             .with_workdir("/src")
             .with_mounted_directory("/src", source)
-            .with_mounted_cache("/home/developer/.cache/bazel", dag.cache_volume("bazel-repo-cache"), owner="developer")
-            .with_mounted_cache("/home/developer/.cache/bazelisk", dag.cache_volume("bazelisk-cache"), owner="developer")
+            .with_mounted_cache(f"{home_dir}/.cache/bazel", dag.cache_volume("bazel-repo-cache"), owner="developer")
+            .with_mounted_cache(f"{home_dir}/.cache/bazelisk", dag.cache_volume("bazelisk-cache"), owner="developer")
+            .with_env_variable("GIT_SSH_COMMAND", "ssh -o StrictHostKeyChecking=no")
         )
-        # Configure SSH DIR
+
+        # 1. Configuração SSH (Prioriza Diretório > Chave Única)
         if ssh_dir:
             ctr = ctr.with_mounted_directory(f"{home_dir}/.ssh", ssh_dir, owner="developer")
-
-        if netrc:
-            ctr = ctr.with_mounted_secret(f"{home_dir}/.netrc", netrc, owner="developer", mode=0o600)
-        # Configuração SSH
-        if ssh_key:
-            # Montamos a chave no local padrão do usuário
-            ctr = ctr.with_mounted_secret("/home/developer/.ssh/id_rsa", ssh_key, owner="developer", mode=0o600)
-            
-            # Truque de segurança para CI: 
-            # Desabilitamos o "StrictHostKeyChecking" para o git não travar perguntando se confia no github.com
-            ctr = ctr.with_env_variable("GIT_SSH_COMMAND", "ssh -o StrictHostKeyChecking=no")
+        elif ssh_key:
+            ctr = ctr.with_mounted_secret(f"{home_dir}/.ssh/id_rsa", ssh_key, owner="developer", mode=0o600)
 
         # 2. Configuração Netrc
         if netrc:
-            # O Bazel procura automaticamente por $HOME/.netrc
-            ctr = ctr.with_mounted_secret("/home/developer/.netrc", netrc, owner="developer", mode=0o600)
+            ctr = ctr.with_mounted_secret(f"{home_dir}/.netrc", netrc, owner="developer", mode=0o600)
 
         # 3. Configuração de Versão
         if bazel_version:
