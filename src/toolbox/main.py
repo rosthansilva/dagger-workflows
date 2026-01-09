@@ -5,6 +5,8 @@ from dagger import object_type, function
 # Usamos o ponto (.) para indicar "deste pacote atual, vá para actions..."
 # Isso remove a dependência do nome "src"
 #FROMLINES
+from .actions.docker.main import Docker
+from .actions.kubernetes.main import Kubernetes
 from .actions.git_utils.main import GitUtils
 from .actions.zuul.main import Zuul
 from .actions.terraform.main import Terraform
@@ -61,3 +63,17 @@ class Toolbox:
         return GitUtils()
     
     
+
+    @function
+    def kubernetes(self) -> Kubernetes:
+        """
+        Retorna o conjunto de ações do Kubernetes
+        """
+        return Kubernetes()
+        
+        
+    
+    @function
+    def docker(self) -> Docker:
+        """Acessa as ferramentas de docker."""
+        return Docker()
