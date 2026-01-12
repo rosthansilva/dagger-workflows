@@ -1,10 +1,7 @@
 import dagger
 from dagger import object_type, function
 
-# ALTERAÇÃO AQUI:
-# Usamos o ponto (.) para indicar "deste pacote atual, vá para actions..."
-# Isso remove a dependência do nome "src"
-#FROMLINES
+# --- IMPORTS CORRIGIDOS ---
 from .actions.docker.main import Docker
 from .actions.kubernetes.main import Kubernetes
 from .actions.git_utils.main import GitUtils
@@ -14,6 +11,9 @@ from .actions.system.main import System
 from .actions.python_dev.main import PythonDev
 from .actions.bazel.main import Bazel
 from .actions.dev.main import Dev
+from .actions.kns.main import Kns
+
+#FROMLINES
 
 @object_type
 class Toolbox:
@@ -30,14 +30,14 @@ class Toolbox:
     def python(self) -> PythonDev:
         """Acessa as ferramentas de desenvolvimento Python (lint, test)."""
         return PythonDev()
-    
+
     @function
     def bazel(self) -> Bazel:
         """
         Ferramentas para build e teste de monorepos com Bazel.
-        Suporta cenários de migração Workspace/Bzlmod.
         """
         return Bazel()
+
     @function
     def dev(self) -> Dev:
         """Ferramentas de desenvolvimento do próprio Toolbox (scaffolding)."""
@@ -47,22 +47,16 @@ class Toolbox:
     def terraform(self) -> Terraform:
         """Acessa as ferramentas de terraform."""
         return Terraform()
-    
-    
-    
+
     @function
     def zuul(self) -> Zuul:
         """Acessa as ferramentas de zuul."""
         return Zuul()
-        
-    
 
     @function
     def git_utils(self) -> GitUtils:
         """Acessa as ferramentas de git_utils."""
         return GitUtils()
-    
-    
 
     @function
     def kubernetes(self) -> Kubernetes:
@@ -70,10 +64,13 @@ class Toolbox:
         Retorna o conjunto de ações do Kubernetes
         """
         return Kubernetes()
-        
-        
-    
+
     @function
     def docker(self) -> Docker:
         """Acessa as ferramentas de docker."""
         return Docker()
+    
+    @function
+    def kns(self) -> Kns:
+        """Acessa as ferramentas de kns."""
+        return Kns()   

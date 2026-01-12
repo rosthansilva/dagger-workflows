@@ -1,6 +1,7 @@
 import dagger
 from dagger import object_type, function, dag  # <--- IMPORTANTE: Adicione 'dag' aqui
 
+
 @object_type
 class System:
     """Funções utilitárias de sistema e shell."""
@@ -15,8 +16,5 @@ class System:
         """Repete uma mensagem."""
         # CORREÇÃO ABAIXO: De 'dagger.container()' para 'dag.container()'
         return await (
-            dag.container() 
-            .from_("alpine:latest")
-            .with_exec(["echo", message])
-            .stdout()
+            dag.container().from_("alpine:latest").with_exec(["echo", message]).stdout()
         )

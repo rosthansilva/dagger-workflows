@@ -2,6 +2,7 @@ import dagger
 from dagger import object_type, function, Directory, Container, dag, File, Doc, Secret
 from typing import Annotated, Optional
 
+
 @object_type
 class Terraform:
     """
@@ -11,24 +12,27 @@ class Terraform:
 
     @function
     def base(
-        self,
-        tf_version: Annotated[str, Doc("Terraform version to use")] = "1.9.0"
+        self, tf_version: Annotated[str, Doc("Terraform version to use")] = "1.9.0"
     ) -> Container:
         """
         Base container with Terraform and Terraform-docs installed.
         """
         tf_docs_version = "v0.19.0"
-        
+
         return (
             dag.container()
             .from_("hashicorp/terraform:" + tf_version)
             # Instala dependências extras para docs e scripts
             .with_exec(["apk", "add", "--no-cache", "curl", "bash", "git"])
             # Instala terraform-docs
-            .with_exec([
-                "curl", "-Lo", "/usr/local/bin/terraform-docs",
-                f"https://github.com/terraform-docs/terraform-docs/releases/download/{tf_docs_version}/terraform-docs-{tf_docs_version}-linux-amd64"
-            ])
+            .with_exec(
+                [
+                    "curl",
+                    "-Lo",
+                    "/usr/local/bin/terraform-docs",
+                    f"https://github.com/terraform-docs/terraform-docs/releases/download/{tf_docs_version}/terraform-docs-{tf_docs_version}-linux-amd64",
+                ]
+            )
             .with_exec(["chmod", "+x", "/usr/local/bin/terraform-docs"])
         )
 
@@ -39,7 +43,9 @@ class Terraform:
         env: Annotated[str, Doc("Environment (dev or prod)")] = "dev",
         dev_arn: Annotated[Optional[Secret], Doc("ARN for dev environment")] = None,
         prod_arn: Annotated[Optional[Secret], Doc("ARN for prod environment")] = None,
-        cloudflare_token: Annotated[Optional[Secret], Doc("Cloudflare API Token")] = None,
+        cloudflare_token: Annotated[
+            Optional[Secret], Doc("Cloudflare API Token")
+        ] = None,
         cloudflare_zone: Annotated[Optional[Secret], Doc("Cloudflare Zone ID")] = None,
     ) -> File:
         """
@@ -48,14 +54,15 @@ class Terraform:
         container = await self._prepare_env(
             source, env, dev_arn, prod_arn, cloudflare_token, cloudflare_zone
         )
-        
+
         plan_file = f"tfplan.{env}"
-        
+
         return (
-            container
-            .with_exec(["terraform", "init", "-upgrade"])
+            container.with_exec(["terraform", "init", "-upgrade"])
             .with_exec(["terraform", "validate"])
-            .with_exec(["terraform", "plan", "-no-color", "-input=false", f"-out={plan_file}"])
+            .with_exec(
+                ["terraform", "plan", "-no-color", "-input=false", f"-out={plan_file}"]
+            )
             .file(plan_file)
         )
 
@@ -67,7 +74,9 @@ class Terraform:
         env: Annotated[str, Doc("Environment (dev or prod)")] = "dev",
         dev_arn: Annotated[Optional[Secret], Doc("ARN for dev environment")] = None,
         prod_arn: Annotated[Optional[Secret], Doc("ARN for prod environment")] = None,
-        cloudflare_token: Annotated[Optional[Secret], Doc("Cloudflare API Token")] = None,
+        cloudflare_token: Annotated[
+            Optional[Secret], Doc("Cloudflare API Token")
+        ] = None,
         cloudflare_zone: Annotated[Optional[Secret], Doc("Cloudflare Zone ID")] = None,
     ) -> str:
         """
@@ -77,10 +86,9 @@ class Terraform:
         container = await self._prepare_env(
             source, env, dev_arn, prod_arn, cloudflare_token, cloudflare_zone
         )
-        
+
         return await (
-            container
-            .with_file(plan_file, plan)
+            container.with_file(plan_file, plan)
             .with_exec(["terraform", "init"])
             .with_exec(["terraform", "apply", "-no-color", "-input=false", plan_file])
             .stdout()
@@ -90,21 +98,23 @@ class Terraform:
     async def docs(
         self,
         source: Annotated[Directory, Doc("Terraform source code")],
-        config_file: Annotated[Optional[File], Doc("Path to .tfdocs-config.yml")] = None
+        config_file: Annotated[
+            Optional[File], Doc("Path to .tfdocs-config.yml")
+        ] = None,
     ) -> File:
         """
         Generates Markdown documentation using terraform-docs.
         """
-        container = self.base().with_mounted_directory("/src", source).with_workdir("/src")
-        
+        container = (
+            self.base().with_mounted_directory("/src", source).with_workdir("/src")
+        )
+
         if config_file:
             container = container.with_file("/src/.tfdocs-config.yml", config_file)
-            
-        return (
-            container
-            .with_exec(["sh", "-c", "terraform-docs markdown /src > README_generated.md"])
-            .file("README_generated.md")
-        )
+
+        return container.with_exec(
+            ["sh", "-c", "terraform-docs markdown /src > README_generated.md"]
+        ).file("README_generated.md")
 
     @function
     async def state_rm(
@@ -120,8 +130,7 @@ class Terraform:
         """
         container = await self._prepare_env(source, env, dev_arn, prod_arn)
         return await (
-            container
-            .with_exec(["terraform", "init"])
+            container.with_exec(["terraform", "init"])
             .with_exec(["terraform", "state", "rm", address])
             .stdout()
         )
@@ -138,11 +147,13 @@ class Terraform:
         cf_zone: Optional[Secret] = None,
     ) -> Container:
         """Sets up the container with secrets and environment variables."""
-        
+
         # 1. Select ARN based on environment
         target_arn = dev_arn if env == "dev" else prod_arn
         if not target_arn:
-            raise Exception(f"ARN for environment '{env}' must be provided as a Secret.")
+            raise Exception(
+                f"ARN for environment '{env}' must be provided as a Secret."
+            )
 
         # 2. Build container
         ctr = (

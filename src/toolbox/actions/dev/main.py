@@ -2,6 +2,7 @@ import dagger
 from dagger import object_type, function, Directory, Doc
 from typing import Annotated
 
+
 @object_type
 class Dev:
     """
@@ -12,21 +13,23 @@ class Dev:
     @function
     async def new_action(
         self,
-        name: Annotated[str, Doc("O nome da nova action (snake_case), ex: 'k8s_utils'")],
-        source: Annotated[Directory, Doc("O diretório 'src' do seu toolbox")]
+        name: Annotated[
+            str, Doc("O nome da nova action (snake_case), ex: 'k8s_utils'")
+        ],
+        source: Annotated[Directory, Doc("O diretório 'src' do seu toolbox")],
     ) -> Directory:
         """
         Gera o esqueleto de uma nova action e registra automaticamente no main.py.
-        
+
         Requer que o arquivo 'src/toolbox/main.py' tenha o marcador '#FROMLINES'.
-        
+
         Exemplo:
             dagger call dev new-action --name "kafka" --source src -o src
         """
-        
+
         # 1. Cálculos de nomes
         # Transforma snake_case em PascalCase (ex: my_tool -> MyTool)
-        class_name = "".join(word.title() for word in name.split('_'))
+        class_name = "".join(word.title() for word in name.split("_"))
         base_path = f"toolbox/actions/{name}"
         main_py_path = "toolbox/main.py"
 
@@ -64,18 +67,19 @@ dagger call {name} info
         try:
             current_main = await source.file(main_py_path).contents()
         except Exception:
-            raise Exception(f"Não foi possível ler {main_py_path}. Verifique se o caminho está correto.")
+            raise Exception(
+                f"Não foi possível ler {main_py_path}. Verifique se o caminho está correto."
+            )
 
         if "#FROMLINES" not in current_main:
-            raise Exception(f"Marcador '#FROMLINES' não encontrado em {main_py_path}. Adicione-o antes dos imports das actions.")
+            raise Exception(
+                f"Marcador '#FROMLINES' não encontrado em {main_py_path}. Adicione-o antes dos imports das actions."
+            )
 
         # Injeção do Import
         import_line = f"from .actions.{name}.main import {class_name}"
         # Adiciona o novo import logo abaixo do marcador
-        new_content = current_main.replace(
-            "#FROMLINES", 
-            f"#FROMLINES\n{import_line}"
-        )
+        new_content = current_main.replace("#FROMLINES", f"#FROMLINES\n{import_line}")
 
         # Injeção da Rota (Append no final da classe)
         # Assume-se que a classe Toolbox é a última coisa no arquivo.
@@ -87,12 +91,11 @@ def {name}(self) -> {class_name}:
     \"\"\"Acessa as ferramentas de {name}.\"\"\"
     return {class_name}()
     
-    """ 
+    """
         new_content += route_code
         # 4. Retornar o Diretório com todos os arquivos (novos e modificados)
         return (
-            source
-            .with_new_file(f"{base_path}/__init__.py", "")
+            source.with_new_file(f"{base_path}/__init__.py", "")
             .with_new_file(f"{base_path}/main.py", new_main_content)
             .with_new_file(f"{base_path}/README.md", readme_content)
             .with_new_file(main_py_path, new_content)

@@ -1,5 +1,6 @@
 import dagger
-from dagger import object_type, function, Directory, dag # <--- Adicione 'dag'
+from dagger import object_type, function, Directory, dag  # <--- Adicione 'dag'
+
 
 @object_type
 class PythonDev:
