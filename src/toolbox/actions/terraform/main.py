@@ -11,9 +11,7 @@ class Terraform:
     """
 
     @function
-    def base(
-        self, tf_version: Annotated[str, Doc("Terraform version to use")] = "1.9.0"
-    ) -> Container:
+    def base(self, tf_version: Annotated[str, Doc("Terraform version to use")] = "1.9.0") -> Container:
         """
         Base container with Terraform and Terraform-docs installed.
         """
@@ -43,26 +41,20 @@ class Terraform:
         env: Annotated[str, Doc("Environment (dev or prod)")] = "dev",
         dev_arn: Annotated[Optional[Secret], Doc("ARN for dev environment")] = None,
         prod_arn: Annotated[Optional[Secret], Doc("ARN for prod environment")] = None,
-        cloudflare_token: Annotated[
-            Optional[Secret], Doc("Cloudflare API Token")
-        ] = None,
+        cloudflare_token: Annotated[Optional[Secret], Doc("Cloudflare API Token")] = None,
         cloudflare_zone: Annotated[Optional[Secret], Doc("Cloudflare Zone ID")] = None,
     ) -> File:
         """
         Initializes and generates a Terraform execution plan.
         """
-        container = await self._prepare_env(
-            source, env, dev_arn, prod_arn, cloudflare_token, cloudflare_zone
-        )
+        container = await self._prepare_env(source, env, dev_arn, prod_arn, cloudflare_token, cloudflare_zone)
 
         plan_file = f"tfplan.{env}"
 
         return (
             container.with_exec(["terraform", "init", "-upgrade"])
             .with_exec(["terraform", "validate"])
-            .with_exec(
-                ["terraform", "plan", "-no-color", "-input=false", f"-out={plan_file}"]
-            )
+            .with_exec(["terraform", "plan", "-no-color", "-input=false", f"-out={plan_file}"])
             .file(plan_file)
         )
 
@@ -74,18 +66,14 @@ class Terraform:
         env: Annotated[str, Doc("Environment (dev or prod)")] = "dev",
         dev_arn: Annotated[Optional[Secret], Doc("ARN for dev environment")] = None,
         prod_arn: Annotated[Optional[Secret], Doc("ARN for prod environment")] = None,
-        cloudflare_token: Annotated[
-            Optional[Secret], Doc("Cloudflare API Token")
-        ] = None,
+        cloudflare_token: Annotated[Optional[Secret], Doc("Cloudflare API Token")] = None,
         cloudflare_zone: Annotated[Optional[Secret], Doc("Cloudflare Zone ID")] = None,
     ) -> str:
         """
         Applies a previously generated Terraform plan.
         """
         plan_file = f"tfplan.{env}"
-        container = await self._prepare_env(
-            source, env, dev_arn, prod_arn, cloudflare_token, cloudflare_zone
-        )
+        container = await self._prepare_env(source, env, dev_arn, prod_arn, cloudflare_token, cloudflare_zone)
 
         return await (
             container.with_file(plan_file, plan)
@@ -98,23 +86,19 @@ class Terraform:
     async def docs(
         self,
         source: Annotated[Directory, Doc("Terraform source code")],
-        config_file: Annotated[
-            Optional[File], Doc("Path to .tfdocs-config.yml")
-        ] = None,
+        config_file: Annotated[Optional[File], Doc("Path to .tfdocs-config.yml")] = None,
     ) -> File:
         """
         Generates Markdown documentation using terraform-docs.
         """
-        container = (
-            self.base().with_mounted_directory("/src", source).with_workdir("/src")
-        )
+        container = self.base().with_mounted_directory("/src", source).with_workdir("/src")
 
         if config_file:
             container = container.with_file("/src/.tfdocs-config.yml", config_file)
 
-        return container.with_exec(
-            ["sh", "-c", "terraform-docs markdown /src > README_generated.md"]
-        ).file("README_generated.md")
+        return container.with_exec(["sh", "-c", "terraform-docs markdown /src > README_generated.md"]).file(
+            "README_generated.md"
+        )
 
     @function
     async def state_rm(
@@ -130,9 +114,7 @@ class Terraform:
         """
         container = await self._prepare_env(source, env, dev_arn, prod_arn)
         return await (
-            container.with_exec(["terraform", "init"])
-            .with_exec(["terraform", "state", "rm", address])
-            .stdout()
+            container.with_exec(["terraform", "init"]).with_exec(["terraform", "state", "rm", address]).stdout()
         )
 
     # --- Private Helper ---
@@ -151,9 +133,7 @@ class Terraform:
         # 1. Select ARN based on environment
         target_arn = dev_arn if env == "dev" else prod_arn
         if not target_arn:
-            raise Exception(
-                f"ARN for environment '{env}' must be provided as a Secret."
-            )
+            raise Exception(f"ARN for environment '{env}' must be provided as a Secret.")
 
         # 2. Build container
         ctr = (

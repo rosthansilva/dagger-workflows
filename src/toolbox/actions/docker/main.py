@@ -16,25 +16,17 @@ class Docker:
         Retorna um container com ferramentas auxiliares (Docker CLI, Trivy para scan).
         """
         return (
-            dag.container()
-            .from_("alpine:latest")
-            .with_exec(["apk", "add", "--no-cache", "docker-cli", "bash", "curl"])
+            dag.container().from_("alpine:latest").with_exec(["apk", "add", "--no-cache", "docker-cli", "bash", "curl"])
         )
 
     @function
     def build(
         self,
         source: Annotated[Directory, Doc("Diretório de contexto para a build")],
-        dockerfile: Annotated[
-            str, Doc("Caminho relativo para o Dockerfile")
-        ] = "Dockerfile",
+        dockerfile: Annotated[str, Doc("Caminho relativo para o Dockerfile")] = "Dockerfile",
         target: Annotated[Optional[str], Doc("Target stage específico")] = None,
-        build_args: Annotated[
-            Optional[list[str]], Doc("Build args no formato ['NAME=VALUE']")
-        ] = None,
-        platforms: Annotated[
-            Optional[list[str]], Doc("Lista de plataformas (ex: linux/amd64)")
-        ] = None,
+        build_args: Annotated[Optional[list[str]], Doc("Build args no formato ['NAME=VALUE']")] = None,
+        platforms: Annotated[Optional[list[str]], Doc("Lista de plataformas (ex: linux/amd64)")] = None,
     ) -> Container:
         """
         Executa o 'docker build' utilizando a engine nativa do Dagger.
@@ -61,9 +53,7 @@ class Docker:
         container: Annotated[Container, Doc("O container buildado")],
         address: Annotated[str, Doc("Endereço completo da imagem (ex: user/repo:tag)")],
         username: Annotated[Optional[str], Doc("Usuário do Registry")] = None,
-        secret: Annotated[
-            Optional[Secret], Doc("Secret (Password/Token) do Registry")
-        ] = None,
+        secret: Annotated[Optional[Secret], Doc("Secret (Password/Token) do Registry")] = None,
     ) -> str:
         """
         Faz o push de um container para um registro remoto com autenticação via Secret.
@@ -86,12 +76,8 @@ class Docker:
     async def scan_report(
         self,
         container: Annotated[Container, Doc("O container a ser analisado")],
-        severity: Annotated[
-            str, Doc("Severidade mínima (LOW,MEDIUM,HIGH,CRITICAL)")
-        ] = "HIGH",
-        exit_code: Annotated[
-            int, Doc("1 para falhar o build se houver vulnerabilidades")
-        ] = 0,
+        severity: Annotated[str, Doc("Severidade mínima (LOW,MEDIUM,HIGH,CRITICAL)")] = "HIGH",
+        exit_code: Annotated[int, Doc("1 para falhar o build se houver vulnerabilidades")] = 0,
     ) -> File:
         """
         Realiza scan de segurança usando Trivy e gera um relatório Markdown.
@@ -120,19 +106,12 @@ class Docker:
 
         report_content = await scan_ctr.stdout()
 
-        return (
-            dag.container()
-            .from_("alpine")
-            .with_new_file("/report.txt", contents=report_content)
-            .file("/report.txt")
-        )
+        return dag.container().from_("alpine").with_new_file("/report.txt", contents=report_content).file("/report.txt")
 
     @function
     async def dive_summary(
         self,
-        container: Annotated[
-            Container, Doc("O container para analisar eficiência de camadas")
-        ],
+        container: Annotated[Container, Doc("O container para analisar eficiência de camadas")],
     ) -> str:
         """
         Analisa a eficiência da imagem (camadas desperdiçadas) usando o Dive.
@@ -181,15 +160,11 @@ class Docker:
         if not skip_scan:
             print("🛡️  Rodando scan de segurança (Trivy)...")
             # Usamos exit_code=1 para que o Dagger lance uma exceção se encontrar falhas graves
-            await self.scan_report(
-                container=container, severity="CRITICAL", exit_code=1
-            )
+            await self.scan_report(container=container, severity="CRITICAL", exit_code=1)
             print("✅ Scan limpo! Nenhuma vulnerabilidade crítica encontrada.")
 
         # 3. Push
         print(f"🚀 Publicando imagem em {address}...")
-        image_digest = await self.push(
-            container=container, address=address, username=username, secret=secret
-        )
+        image_digest = await self.push(container=container, address=address, username=username, secret=secret)
 
         return f"🚀 Ciclo finalizado com sucesso!\nDigest: {image_digest}"

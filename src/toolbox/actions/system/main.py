@@ -15,6 +15,4 @@ class System:
     async def echo(self, message: str) -> str:
         """Repete uma mensagem."""
         # CORREÇÃO ABAIXO: De 'dagger.container()' para 'dag.container()'
-        return await (
-            dag.container().from_("alpine:latest").with_exec(["echo", message]).stdout()
-        )
+        return await dag.container().from_("alpine:latest").with_exec(["echo", message]).stdout()

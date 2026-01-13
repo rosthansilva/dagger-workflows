@@ -57,9 +57,7 @@ class Zuul:
         )
 
     @function
-    async def lint(
-        self, source: Annotated[Directory, Doc("The directory containing zuul.d/")]
-    ) -> str:
+    async def lint(self, source: Annotated[Directory, Doc("The directory containing zuul.d/")]) -> str:
         """
         Validates Zuul YAML syntax and Ansible playbooks.
         """

@@ -132,6 +132,4 @@ nodes:
             .with_exec(["kind", "get", "kubeconfig"], redirect_stdout="/tmp/kubeconfig")
         )
 
-        return CustomKindCluster(
-            dind_service=dind_service, kube_config=bootstrap.file("/tmp/kubeconfig")
-        )
+        return CustomKindCluster(dind_service=dind_service, kube_config=bootstrap.file("/tmp/kubeconfig"))

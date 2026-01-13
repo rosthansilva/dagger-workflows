@@ -1,5 +1,6 @@
 import dagger
-from dagger import object_type, function
+from dagger import object_type, function, Directory, Secret, Service, dag
+from typing import Annotated, Optional
 
 # --- IMPORTS CORRIGIDOS ---
 from .actions.docker.main import Docker
@@ -10,10 +11,11 @@ from .actions.terraform.main import Terraform
 from .actions.system.main import System
 from .actions.python_dev.main import PythonDev
 from .actions.bazel.main import Bazel
-from .actions.dev.main import Dev
 from .actions.kns.main import Kns
+from .actions.dev.main import Dev
 
-#FROMLINES
+# FROMLINES
+
 
 @object_type
 class Toolbox:
@@ -28,9 +30,54 @@ class Toolbox:
 
     @function
     def python(self) -> PythonDev:
-        """Acessa as ferramentas de desenvolvimento Python (lint, test)."""
         return PythonDev()
 
+    @function
+    def docker(self) -> Docker:
+        return Docker()
+
+    @function
+    async def up(
+        self,
+        source: Annotated[Directory, "Diretório raiz do projeto"],
+        ignore_linting: Annotated[bool, "Se True, ignora falhas de lint e continua"] = False
+    ) -> Service:
+        """
+        🚀 MODO DEV: Lint -> Test -> Build -> Run.
+        
+        Use --ignore-linting para rodar mesmo se o código estiver "feio" (black/ruff falhando).
+        """
+        
+        print("🚦 Iniciando verificações de qualidade...")
+        
+        # Passamos a flag para o check_quality
+        msg = await self.python().check_quality(
+            source=source, 
+            ignore_errors=ignore_linting
+        )
+        print(msg)
+
+        # Se chegou aqui (seja porque passou ou porque ignorou), segue o baile
+        print("🐳 Construindo container de produção com UV...")
+        app_container = self.python().build_production(source=source)
+
+        redis_service = (
+            dag.container()
+            .from_("redis:7-alpine")
+            .with_exposed_port(6379)
+            .as_service()
+        )
+
+        app_service = (
+            app_container
+            .with_service_binding("redis", redis_service)
+            .with_env_variable("REDIS_URL", "redis://redis:6379")
+            .with_exposed_port(8000)
+            .as_service()
+        )
+
+        return app_service
+    
     @function
     def bazel(self) -> Bazel:
         """
@@ -66,11 +113,6 @@ class Toolbox:
         return Kubernetes()
 
     @function
-    def docker(self) -> Docker:
-        """Acessa as ferramentas de docker."""
-        return Docker()
-    
-    @function
     def kns(self) -> Kns:
         """Acessa as ferramentas de kns."""
-        return Kns()   
+        return Kns()

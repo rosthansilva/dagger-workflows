@@ -57,9 +57,7 @@ class Bazel:
         )
 
     @function
-    def with_proxy(
-        self, container: Container, port: int = 62812, alias: str = "locahost-proxy"
-    ) -> Container:
+    def with_proxy(self, container: Container, port: int = 62812, alias: str = "locahost-proxy") -> Container:
         """
         Cria um túnel que mapeia a porta do seu localhost para dentro do container.
         O serviço ficará disponível dentro do container em http://locahost-proxy:{port}
@@ -75,9 +73,7 @@ class Bazel:
         self,
         remote_url: Annotated[str, Doc("URL do repositório para testar (SSH)")],
         ssh_dir: Annotated[Optional[Directory], Doc("Diretório .ssh completo")] = None,
-        ssh_key: Annotated[
-            Optional[Secret], Doc("Chave privada SSH (alternativa)")
-        ] = None,
+        ssh_key: Annotated[Optional[Secret], Doc("Chave privada SSH (alternativa)")] = None,
         netrc: Annotated[Optional[Secret], Doc("Arquivo .netrc")] = None,
     ) -> str:
         """
@@ -99,9 +95,7 @@ class Bazel:
         self,
         repo1_source: Annotated[Directory, Doc("Repositório Raiz (Workspace)")],
         repo2_source: Annotated[Directory, Doc("Repositório sendo migrado (Bzlmod)")],
-        repo2_target_in_repo1: Annotated[
-            str, Doc("Target do repo 2 chamado pelo repo 1 (ex: @repo2//my:target)")
-        ],
+        repo2_target_in_repo1: Annotated[str, Doc("Target do repo 2 chamado pelo repo 1 (ex: @repo2//my:target)")],
         bazel_version: Annotated[Optional[str], Doc("Versão do Bazel")] = None,
         ssh_dir: Optional[Directory] = None,
         ssh_key: Optional[Secret] = None,
@@ -123,9 +117,7 @@ class Bazel:
         await ctr_legacy.stdout()
 
         # --- 2. VALIDAR REPO 2 (BZLMOD) ---
-        ctr_modern = self._setup_env(
-            repo2_source, bazel_version, ssh_key, ssh_dir, netrc
-        )
+        ctr_modern = self._setup_env(repo2_source, bazel_version, ssh_key, ssh_dir, netrc)
 
         raw_query = await (
             ctr_modern.with_exec(
@@ -177,12 +169,7 @@ class Bazel:
             migrated = "DONE" if t in successful_bzlmod else "PENDING"
             md.append(f"| {t} | ✅ | {res} | {migrated} |")
 
-        return (
-            dag.container()
-            .from_("alpine")
-            .with_new_file("/report.md", contents="\n".join(md))
-            .file("/report.md")
-        )
+        return dag.container().from_("alpine").with_new_file("/report.md", contents="\n".join(md)).file("/report.md")
 
     @function
     async def build(
@@ -191,22 +178,16 @@ class Bazel:
         targets: Annotated[list[str], Doc("Targets")] = ["//..."],
         bzlmod: Annotated[bool, Doc("Bzlmod flag")] = True,
         bazel_version: Annotated[Optional[str], Doc("Versão específica")] = None,
-        ssh_dir: Annotated[
-            Optional[Directory], Doc("Full .ssh directory to mount")
-        ] = None,
+        ssh_dir: Annotated[Optional[Directory], Doc("Full .ssh directory to mount")] = None,
         ssh_key: Annotated[Optional[Secret], Doc("Chave privada SSH")] = None,
-        netrc: Annotated[
-            Optional[Secret], Doc("Arquivo .netrc para autenticação HTTP")
-        ] = None,
+        netrc: Annotated[Optional[Secret], Doc("Arquivo .netrc para autenticação HTTP")] = None,
     ) -> str:
         """Executa 'bazel build' com suporte a autenticação."""
         flags = ["build"] + targets
         if not bzlmod and self._is_version_ge_7(bazel_version):
             flags.append("--noenable_bzlmod")
 
-        return await self._run_bazel(
-            source, flags, bazel_version, ssh_key, ssh_dir, netrc
-        )
+        return await self._run_bazel(source, flags, bazel_version, ssh_key, ssh_dir, netrc)
 
     @function
     async def test(
@@ -216,9 +197,7 @@ class Bazel:
         bzlmod: Annotated[bool, Doc("Bzlmod flag")] = True,
         bazel_version: Annotated[Optional[str], Doc("Versão específica")] = None,
         test_output: Annotated[str, Doc("Nível de log")] = "errors",
-        ssh_dir: Annotated[
-            Optional[Directory], Doc("Full .ssh directory to mount")
-        ] = None,
+        ssh_dir: Annotated[Optional[Directory], Doc("Full .ssh directory to mount")] = None,
         ssh_key: Annotated[Optional[Secret], Doc("Chave privada SSH")] = None,
         netrc: Annotated[Optional[Secret], Doc("Arquivo .netrc")] = None,
     ) -> str:
@@ -227,23 +206,17 @@ class Bazel:
         if not bzlmod and self._is_version_ge_7(bazel_version):
             flags.append("--noenable_bzlmod")
 
-        return await self._run_bazel(
-            source, flags, bazel_version, ssh_key, ssh_dir, netrc
-        )
+        return await self._run_bazel(source, flags, bazel_version, ssh_key, ssh_dir, netrc)
 
     @function
     async def build_with_report(
         self,
         source: Annotated[Directory, Doc("Repo raiz")],
         targets: Annotated[list[str], Doc("Targets")] = ["//..."],
-        build_args: Annotated[
-            list[str], Doc("Flags extras de build (ex: --config=gcc9)")
-        ] = [],
+        build_args: Annotated[list[str], Doc("Flags extras de build (ex: --config=gcc9)")] = [],
         bzlmod: Annotated[bool, Doc("Bzlmod flag")] = True,
         bazel_version: Annotated[Optional[str], Doc("Versão específica")] = None,
-        ssh_dir: Annotated[
-            Optional[Directory], Doc("Full .ssh directory to mount")
-        ] = None,
+        ssh_dir: Annotated[Optional[Directory], Doc("Full .ssh directory to mount")] = None,
         ssh_key: Annotated[Optional[Secret], Doc("Chave privada SSH")] = None,
         netrc: Annotated[Optional[Secret], Doc("Arquivo .netrc")] = None,
     ) -> File:
@@ -307,9 +280,7 @@ class Bazel:
 
         md_lines = []
         md_lines.append(f"## Bazel Build Report")
-        md_lines.append(
-            f"**Date:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
+        md_lines.append(f"**Date:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         md_lines.append("")
         md_lines.append("| Target | Status | Details |")
         md_lines.append("| :--- | :--- | :--- |")
@@ -327,9 +298,7 @@ class Bazel:
 
             md_lines.append(f"| {target} | {status} | {detail} |")
 
-        return ctr.with_new_file("build_report.md", contents="\n".join(md_lines)).file(
-            "build_report.md"
-        )
+        return ctr.with_new_file("build_report.md", contents="\n".join(md_lines)).file("build_report.md")
 
     @function
     def query_to_file(
@@ -339,9 +308,7 @@ class Bazel:
         query: str = "//...",
         bzlmod: bool = True,
         bazel_version: Optional[str] = None,
-        ssh_dir: Annotated[
-            Optional[Directory], Doc("Full .ssh directory to mount")
-        ] = None,
+        ssh_dir: Annotated[Optional[Directory], Doc("Full .ssh directory to mount")] = None,
         ssh_key: Annotated[Optional[Secret], Doc("Chave privada SSH")] = None,
         netrc: Annotated[Optional[Secret], Doc("Arquivo .netrc")] = None,
     ) -> File:
@@ -377,11 +344,7 @@ class Bazel:
         ssh_dir: Optional[Directory],
         netrc: Optional[Secret],
     ) -> str:
-        return await (
-            self._setup_env(source, version, ssh_key, ssh_dir, netrc)
-            .with_exec(["bazel"] + args)
-            .stdout()
-        )
+        return await self._setup_env(source, version, ssh_key, ssh_dir, netrc).with_exec(["bazel"] + args).stdout()
 
     def _setup_env(
         self,
@@ -411,19 +374,13 @@ class Bazel:
 
         # 1. Configuração SSH (Prioriza Diretório > Chave Única)
         if ssh_dir:
-            ctr = ctr.with_mounted_directory(
-                f"{home_dir}/.ssh", ssh_dir, owner="developer"
-            )
+            ctr = ctr.with_mounted_directory(f"{home_dir}/.ssh", ssh_dir, owner="developer")
         elif ssh_key:
-            ctr = ctr.with_mounted_secret(
-                f"{home_dir}/.ssh/id_rsa", ssh_key, owner="developer", mode=0o600
-            )
+            ctr = ctr.with_mounted_secret(f"{home_dir}/.ssh/id_rsa", ssh_key, owner="developer", mode=0o600)
 
         # 2. Configuração Netrc
         if netrc:
-            ctr = ctr.with_mounted_secret(
-                f"{home_dir}/.netrc", netrc, owner="developer", mode=0o600
-            )
+            ctr = ctr.with_mounted_secret(f"{home_dir}/.netrc", netrc, owner="developer", mode=0o600)
 
         # 3. Configuração de Versão
         if bazel_version:

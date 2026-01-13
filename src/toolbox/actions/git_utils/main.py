@@ -54,9 +54,7 @@ class GitUtils:
     async def changelog(
         self,
         source: Annotated[Directory, Doc("The repository directory")],
-        since_tag: Annotated[
-            Optional[str], Doc("Starting tag. If None, uses last tag")
-        ] = None,
+        since_tag: Annotated[Optional[str], Doc("Starting tag. If None, uses last tag")] = None,
     ) -> str:
         """
         Generates a clean changelog since the specified tag.
@@ -101,9 +99,7 @@ class GitUtils:
         return f"🗑️ The following branches can be safely deleted:\n{output}"
 
     @function
-    async def suggest_next_version(
-        self, source: Annotated[Directory, Doc("The repository directory")]
-    ) -> str:
+    async def suggest_next_version(self, source: Annotated[Directory, Doc("The repository directory")]) -> str:
         """
         Analyzes recent commits to suggest the next Semantic Version (SemVer).
         """
